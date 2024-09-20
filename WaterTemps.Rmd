@@ -1,0 +1,89 @@
+---
+title: "Water Temperatures at sites with E. limosum"
+author: "Stacy Zhang"
+date: "2024-09-20"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r figure settings, include = FALSE}
+stoopidtheme <- theme_bw() + 
+  theme(
+    panel.grid.major 	= element_blank(),
+    panel.grid.minor 	= element_blank(), 
+    panel.border 		= element_blank(), 
+    axis.line 			= element_line(colour = "black"), 
+    text 				= element_text(size = 12),
+    axis.text 			= element_text(size = 10),
+    axis.title 			= element_text(size = 12),
+    axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+    legend.position="none",
+    legend.box = "horizontal",
+    legend.title = element_blank(),
+    legend.key = element_rect(size = 5),
+    legend.key.size = unit(1, 'lines'))
+
+```
+
+
+Update BFT data
+```{R}
+library(rnoaa)
+test <- buoy(dataset = 'stdmet', buoyid = 'BFTN7')
+
+yrs.1 <- c(2005:2023)  
+BFTN7 <- map(yrs.1, buoy, 
+              dataset ='stdmet', 
+              buoyid = 'BFTN7',
+              years = yrs.1) %>%
+          map_dfr("data")
+fwrite(BFTN7, file.path(path, 'BFTN7.csv'), row.names = FALSE, col.names = TRUE, nThread = numCores)
+
+# idk why but R crashes if i try to mutate the date
+BFTN7 <- fread(file.path(path, 'BFTN7.csv'), sep =",", stringsAsFactors = F, nThread = numCores)
+
+# historical data 1994-2004
+# Clean up the historical data that was downloaded from the CO-OPS API server
+hist.folder <- '/proj/fodrielab/SST_Data/NOAA/Historical/BFTN7_hist'
+hist.files <- list.files(path = hist.folder, pattern = ".csv", full.names = TRUE); hist.files
+hist <- plyr::ldply(hist.files, read_csv); names(hist) 
+
+# combine the data
+BFTN7.all <- hist %>%
+  rename(time = 'Date Time',
+         sea_surface_temperature = 'Water Temperature' ) %>%
+  select(-c(X, N, R)) %>%
+  bind_rows(BFTN7) %>%
+  fill(lat, .direction = "up") %>%
+  fill(lon, .direction = 'up') %>%
+  add_column(Buoy = 'BFTN7', .before = 'time')
+
+# check
+BFTN7.all %>%
+  mutate(year = lubridate::year(time)) %>%
+  group_by(year) %>%
+  summarise(max(sea_surface_temperature, na.rm = TRUE))
+
+# export
+fwrite(BFTN7.all, file.path(comp.path, 'BFTN7_all.csv'), row.names = FALSE, col.names = TRUE, nThread = numCores)
+
+
+## EDA
+BFTN7.all <- fread(file.path(comp.path, 'BFTN7_all.csv'), sep =",", stringsAsFactors = F, nThread = numCores)
+BFTN7.all %>%
+  arrange(time) %>%
+  filter(!is.na(sea_surface_temperature)) %>%
+  mutate(Year = year(time)) %>%
+  # count(Year)
+  filter(Year == 2008)
+
+
+```
+
+
+
+
